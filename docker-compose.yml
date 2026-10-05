@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  # ── Ollama local model server ──────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # To pull a model after first start:
+    # docker exec ollama ollama pull llama3.2
+
+  # ── FastAPI microservice ───────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: ai_microservice
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecret-change-in-production-32chars!!}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - DAILY_TOKEN_QUOTA=${DAILY_TOKEN_QUOTA:-50000}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - ./usage.db:/app/usage.db   # persist SQLite across restarts
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  # ── Streamlit frontend ─────────────────────────────────────────────────────
+  streamlit:
+    build: .
+    container_name: ai_streamlit
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
